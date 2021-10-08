@@ -34,8 +34,8 @@ struct Cli {
 struct Line {
     record: StringRecord,
     weight: f64,
-    r:f64,
-    index:f64,
+    r: f64,
+    index: f64,
     breaker: usize, // tie breaker
 }
 
@@ -54,12 +54,11 @@ impl Ord for Line {
         } else {
             warn!("Numerical inprecision! Unable to distinguish between float indexes. picking randomly");
             let mut rng = rand::thread_rng();
-            if rng.gen::<f64>()>0.5{
+            if rng.gen::<f64>() > 0.5 {
                 other.breaker.cmp(&self.breaker)
-            }else{
+            } else {
                 self.breaker.cmp(&other.breaker)
             }
-
         }
     }
 }
@@ -131,26 +130,32 @@ fn main() -> Result<(), Error> {
     let mut i = 0;
     for record in reader.records() {
         let record = record?;
-        let weight: f64 = get_weight(weight_column, &record, &include, &exclude, id_column);
-        let r = rng.gen::<f64>();
-        let index = (1.0/weight)*r.log2(); // log(index) where index = r^1/w
-        if index ==0.0 {
-            panic!("Weights are too small for numerical precision")
-        }
-        let line = Line {
-            weight,
-            r,
-            index,
-            record,
-            breaker: i,
-        };
-        trace!("pushing line {:?}", &line);
-        heap.push(line);
-        i += 1;
-        if heap.len() > args.n {
-           let smallest= heap.pop();
-            if let Some(poor_soul) = smallest{
-                trace!("removing line  {:?}", poor_soul)
+        if !exclude.contains(&String::from(record.get(id_column).unwrap())) {
+            let weight: f64 = get_weight(weight_column, &record);
+            let r = rng.gen::<f64>();
+            let index = if include.contains(&String::from(record.get(id_column).unwrap())) {
+                f64::INFINITY
+            } else {
+                (1.0 / weight) * r.log2()
+            }; // log(index) where index = r^1/w
+            if index == 0.0 {
+                panic!("Weights are too small for numerical precision")
+            }
+            let line = Line {
+                weight,
+                r,
+                index,
+                record,
+                breaker: i,
+            };
+            trace!("pushing line {:?}", &line);
+            heap.push(line);
+            i += 1;
+            if heap.len() > args.n {
+                let smallest = heap.pop();
+                if let Some(poor_soul) = smallest {
+                    trace!("removing line  {:?}", poor_soul)
+                }
             }
         }
     }
@@ -164,19 +169,7 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-fn get_weight(
-    weight_column: Option<usize>,
-    record: &StringRecord,
-    include: &[String],
-    exclude: &[String],
-    id_column: usize,
-) -> f64 {
-    if exclude.contains(&String::from(record.get(id_column).unwrap())) {
-        return f64::NEG_INFINITY;
-    };
-    if include.contains(&String::from(record.get(id_column).unwrap())) {
-        return f64::INFINITY;
-    }
+fn get_weight(weight_column: Option<usize>, record: &StringRecord) -> f64 {
     match weight_column {
         Some(i) => {
             if let Some(w) = record.get(i) {
